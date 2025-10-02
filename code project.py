@@ -15,14 +15,19 @@ st.set_page_config(page_title="ابزار پیشنهاد سایت رپورتاژ
 # ---------- Custom Theme CSS ----------
 st.markdown("""
 <style>
-body {
+/* تغییر بک‌گراند کل صفحه */
+[data-testid="stAppViewContainer"] {
     background-color: #F4E9D7;
     color: #000000;
 }
-div[data-testid="stSidebar"] {
+
+/* تغییر بک‌گراند سایدبار */
+[data-testid="stSidebar"] {
     background-color: #B8C4A9;
 }
-div.stButton > button:first-child {
+
+/* تغییر دکمه‌های عمومی (مثل اجرای پردازش) */
+.stButton > button {
     background-color: #D97D55;
     color: white;
     border-radius: 10px;
@@ -30,7 +35,9 @@ div.stButton > button:first-child {
     width: 100%;
     font-weight: bold;
 }
-div.stDownloadButton > button {
+
+/* تغییر دکمه دانلود */
+.stDownloadButton > button {
     background-color: #6FA4AF;
     color: white;
     border-radius: 10px;
