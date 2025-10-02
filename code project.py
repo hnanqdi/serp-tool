@@ -10,8 +10,36 @@ from openpyxl.chart import BarChart, Reference
 from openpyxl.utils import get_column_letter
 import requests
 
-st.set_page_config(page_title="ابزار خروجی اکسل SERP", layout="wide")
-st.title("ابزار تولید و دانلود فایل اکسل SERP")
+st.set_page_config(page_title="ابزار پیشنهاد سایت رپورتاژ", layout="wide")
+
+# ---------- Custom Theme CSS ----------
+st.markdown("""
+<style>
+body {
+    background-color: #F4E9D7;
+    color: #000000;
+}
+div[data-testid="stSidebar"] {
+    background-color: #B8C4A9;
+}
+div.stButton > button:first-child {
+    background-color: #D97D55;
+    color: white;
+    border-radius: 10px;
+    height: 3em;
+    width: 100%;
+    font-weight: bold;
+}
+div.stDownloadButton > button {
+    background-color: #6FA4AF;
+    color: white;
+    border-radius: 10px;
+    font-weight: bold;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.title("ابزار پیشنهاد سایت رپورتاژ")
 
 # ---------- Helper functions ----------
 def safe_filename(name: str):
@@ -37,8 +65,8 @@ def extract_domains_from_urls_df(df):
         except: continue
     return domains
 
-# ---------- Fetch SERP data without delay ----------
-def fetch_serp_data(keywords, api_key, output_folder):
+# ---------- Fetch SERP data with batching ----------
+def fetch_serp_data_batch(keywords, api_key, output_folder, batch_size=50):
     if not os.path.exists(output_folder): os.makedirs(output_folder)
     url = 'https://google.serper.dev/search'
     headers = {
@@ -46,18 +74,21 @@ def fetch_serp_data(keywords, api_key, output_folder):
         'Content-Type': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
     }
-    for keyword in keywords:
-        payload = json.dumps([{"q": keyword, "gl": "ir", "num": 50, "autocorrect": True}])
+    for i in range(0, len(keywords), batch_size):
+        batch = keywords[i:i+batch_size]
+        payload = json.dumps([{"q": kw, "gl": "ir", "num": 50, "autocorrect": True} for kw in batch])
         try:
             response = requests.post(url, headers=headers, data=payload)
             if response.status_code == 200:
-                data = response.json()[0]
-                with open(os.path.join(output_folder, safe_filename(keyword)+'.json'), 'w', encoding='utf-8') as f:
-                    json.dump(data, f, ensure_ascii=False)
+                serp_responses = response.json()
+                for j, keyword in enumerate(batch):
+                    data = serp_responses[j]
+                    with open(os.path.join(output_folder, safe_filename(keyword)+'.json'), 'w', encoding='utf-8') as f:
+                        json.dump(data, f, ensure_ascii=False)
             else:
-                st.warning(f"خطا در دریافت داده برای '{keyword}': {response.status_code}")
+                st.warning(f"خطا در دریافت داده برای batch {i}: {response.status_code}")
         except Exception as e:
-            st.warning(f"خطا در درخواست Serper برای '{keyword}': {e}")
+            st.warning(f"خطا در درخواست Serper برای batch {i}: {e}")
 
 # ---------- Process JSON ----------
 def process_json_folder(data_folder, domains_to_check):
@@ -100,7 +131,6 @@ def build_excel_bytes(df_final, domain_grouped):
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine='openpyxl') as writer:
         df_final.to_excel(writer, sheet_name='Results', index=False)
-        domain_grouped.to_excel(writer, sheet_name='Summary', index=False)
     buf.seek(0)
     wb = load_workbook(buf)
     ws = wb['Results']
@@ -147,8 +177,10 @@ def build_excel_bytes(df_final, domain_grouped):
 
 # ---------- UI ----------
 st.sidebar.header('ورودی‌ها')
-uploaded_keywords = st.sidebar.file_uploader('آپلود keywords.txt', type=['txt'])
-uploaded_urls = st.sidebar.file_uploader('آپلود urls_list.xlsx', type=['xlsx'])
+st.sidebar.markdown('**آپلود فایل کلمات کلیدی (.txt)**')
+uploaded_keywords = st.sidebar.file_uploader('', type=['txt'])
+st.sidebar.markdown('**آپلود فایل لیست دامنه (.xlsx)**')
+uploaded_urls = st.sidebar.file_uploader('', type=['xlsx'])
 api_key = st.sidebar.text_input('API Key Serper.dev')
 run_button = st.button('اجرای پردازش')
 
@@ -161,11 +193,11 @@ if run_button:
             keywords = read_keywords_file(uploaded_keywords)
             urls_df = read_urls_df(uploaded_urls)
             domains = extract_domains_from_urls_df(urls_df)
-            fetch_serp_data(keywords, api_key, tmpdir)  # بدون تاخیر بین درخواست‌ها
+            fetch_serp_data_batch(keywords, api_key, tmpdir)  # درخواست‌ها به‌صورت batch
             df_results = process_json_folder(tmpdir, domains)
             domain_grouped = cluster_domains_from_results(df_results)
             df_final = df_results.merge(domain_grouped[['Domain','ClusterLabel']], on='Domain', how='left') if not df_results.empty else pd.DataFrame(columns=['Domain','Query','Position','Title','Link','ClusterLabel'])
             excel_bytes = build_excel_bytes(df_final, domain_grouped)
             st.success('پردازش انجام شد')
             st.dataframe(domain_grouped.head(50))
-            st.download_button('دانلود فایل اکسل', data=excel_bytes.getvalue(), file_name='domains_queries_with_heatmap_barchart.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            st.download_button('دانلود فایل اکسل', data=excel_bytes.getvalue(), file_name='serp_reportage_tool.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
